@@ -28,17 +28,17 @@ logger.addHandler(ch)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Training codes for Openpose using Tensorflow')
-    parser.add_argument('--model', default='mobilenet_v2_1.4', help='model name')
-    parser.add_argument('--datapath', type=str, default='/data/public/rw/coco/annotations')
-    parser.add_argument('--imgpath', type=str, default='/data/public/rw/coco/')
+    parser.add_argument('--model', default='cmu', help='model name')
+    parser.add_argument('--datapath', type=str, default='C:/Users/User/Desktop/python/Fall_Detection/tf_pose/data/public/rw/coco/annotations')
+    parser.add_argument('--imgpath', type=str, default='C:/Users/User/Desktop/python/Fall_Detection/tf_pose/data/public/rw/coco/')
     parser.add_argument('--batchsize', type=int, default=64)
     parser.add_argument('--gpus', type=int, default=4)
-    parser.add_argument('--max-epoch', type=int, default=600)
+    parser.add_argument('--max-epoch', type=int, default=50)
     parser.add_argument('--lr', type=str, default='0.001')
     parser.add_argument('--tag', type=str, default='test')
     parser.add_argument('--checkpoint', type=str, default='')
 
-    parser.add_argument('--input-width', type=int, default=432)
+    parser.add_argument('--input-width', type=int, default=368)
     parser.add_argument('--input-height', type=int, default=368)
     parser.add_argument('--quant-delay', type=int, default=-1)
     args = parser.parse_args()
@@ -49,23 +49,25 @@ if __name__ == '__main__':
         raise Exception('gpus <= 0')
 
     # define input placeholder
-    set_network_input_wh(args.input_width, args.input_height)
+    set_network_input_wh(args.input_width, args.input_height) # 입력값으로 network_w, h 설정
     scale = 4
 
     if args.model in ['cmu', 'vgg'] or 'mobilenet' in args.model:
         scale = 8
 
-    set_network_scale(scale)
-    output_w, output_h = args.input_width // scale, args.input_height // scale
+    set_network_scale(scale) #scale 반영
+    output_w, output_h = args.input_width // scale, args.input_height // scale # //: 나누기+소수점 버림. 입력 크기에서 줄인다..?
 
     logger.info('define model+')
     with tf.device(tf.DeviceSpec(device_type="CPU")):
         input_node = tf.placeholder(tf.float32, shape=(args.batchsize, args.input_height, args.input_width, 3), name='image')
+        #데이터타입 float, 입력 데이터 (batchsize, input_h, input_w, 3), 이름 image
+        #placeholder: 입력값을 나중에 받기 위해 비워두는 매개변수.. 빈 그릇
         vectmap_node = tf.placeholder(tf.float32, shape=(args.batchsize, output_h, output_w, 38), name='vectmap')
         heatmap_node = tf.placeholder(tf.float32, shape=(args.batchsize, output_h, output_w, 19), name='heatmap')
 
         # prepare data
-        df = get_dataflow_batch(args.datapath, True, args.batchsize, img_path=args.imgpath)
+        df = get_dataflow_batch(args.datapath, True, args.batchsize, img_path=args.imgpath) #훈련용 데이터 전처리(회전 크롭 등) 포함 불러오기
         enqueuer = DataFlowToQueue(df, [input_node, heatmap_node, vectmap_node], queue_size=100)
         q_inp, q_heat, q_vect = enqueuer.dequeue()
 
@@ -73,7 +75,7 @@ if __name__ == '__main__':
     df_valid.reset_state()
     validation_cache = []
 
-    val_image = get_sample_images(args.input_width, args.input_height)
+    val_image = get_sample_images(args.input_width, args.input_height) #평가용 이미지... 함수 참고해서 파일 추가하고 수정?
     logger.debug('tensorboard val image: %d' % len(val_image))
     logger.debug(q_inp)
     logger.debug(q_heat)
@@ -81,7 +83,7 @@ if __name__ == '__main__':
 
     # define model for multi-gpu
     q_inp_split, q_heat_split, q_vect_split = tf.split(q_inp, args.gpus), tf.split(q_heat, args.gpus), tf.split(q_vect, args.gpus)
-
+    
     output_vectmap = []
     output_heatmap = []
     losses = []
@@ -100,7 +102,7 @@ if __name__ == '__main__':
                 outputs.append(net.get_output())
 
                 l1s, l2s = net.loss_l1_l2()
-                for idx, (l1, l2) in enumerate(zip(l1s, l2s)):
+                for idx, (l1, l2) in enumerate(zip(l1s, l2s)): #enumerate: idx 뽑기 / zip: l1s, l2s에서 순서 맞춰서 하나씩 뽑아 (l1, l2) 만들어주기
                     loss_l1 = tf.nn.l2_loss(tf.concat(l1, axis=0) - q_vect_split[gpu_id], name='loss_l1_stage%d_tower%d' % (idx, gpu_id))
                     loss_l2 = tf.nn.l2_loss(tf.concat(l2, axis=0) - q_heat_split[gpu_id], name='loss_l2_stage%d_tower%d' % (idx, gpu_id))
                     losses.append(tf.reduce_mean([loss_l1, loss_l2]))
@@ -118,7 +120,7 @@ if __name__ == '__main__':
         total_loss_ll = tf.reduce_sum([total_loss_ll_paf, total_loss_ll_heat])
 
         # define optimizer
-        step_per_epoch = 121745 // args.batchsize
+        step_per_epoch = 118287 // args.batchsize
         global_step = tf.Variable(0, trainable=False)
         if ',' not in args.lr:
             starter_learning_rate = float(args.lr)
@@ -170,7 +172,7 @@ if __name__ == '__main__':
     with tf.Session(config=config) as sess:
         logger.info('model weights initialization')
         sess.run(tf.global_variables_initializer())
-
+        #모델
         if args.checkpoint and os.path.isdir(args.checkpoint):
             logger.info('Restore from checkpoint...')
             # loader = tf.train.Saver(net.restorable_variables())
@@ -180,11 +182,11 @@ if __name__ == '__main__':
         elif pretrain_path:
             logger.info('Restore pretrained weights... %s' % pretrain_path)
             if '.npy' in pretrain_path:
-                net.load(pretrain_path, sess, False)
+                net.load(pretrain_path, sess, True)
             else:
                 try:
-                    loader = tf.train.Saver(net.restorable_variables(only_backbone=False))
-                    loader.restore(sess, pretrain_path)
+                    loader = tf.train.Saver(net.restorable_variables(only_backbone=False)) #변수 저장
+                    loader.restore(sess, pretrain_path) #변수 복구
                 except:
                     logger.info('Restore only weights in backbone layers.')
                     loader = tf.train.Saver(net.restorable_variables())
@@ -196,6 +198,7 @@ if __name__ == '__main__':
 
         logger.info('prepare coordinator')
         coord = tf.train.Coordinator()
+        #threads=tf.train.start_queue_runners(sess, coord=coord)
         enqueuer.set_coordinator(coord)
         enqueuer.start()
 
@@ -207,6 +210,7 @@ if __name__ == '__main__':
         last_log_epoch1 = last_log_epoch2 = -1
         while True:
             _, gs_num = sess.run([train_op, global_step])
+            print(gs_num)
             curr_epoch = float(gs_num) / step_per_epoch
 
             if gs_num > step_per_epoch * args.max_epoch:
@@ -230,14 +234,14 @@ if __name__ == '__main__':
 
                 average_loss = average_loss_ll = average_loss_ll_paf = average_loss_ll_heat = 0
                 total_cnt = 0
-
+                
                 if len(validation_cache) == 0:
                     for images_test, heatmaps, vectmaps in tqdm(df_valid.get_data()):
                         validation_cache.append((images_test, heatmaps, vectmaps))
-                    df_valid.reset_state()
+                    #df_valid.reset_state()
                     del df_valid
                     df_valid = None
-
+                print("end1")
                 # log of test accuracy
                 for images_test, heatmaps, vectmaps in validation_cache:
                     lss, lss_ll, lss_ll_paf, lss_ll_heat, vectmap_sample, heatmap_sample = sess.run(
@@ -249,7 +253,7 @@ if __name__ == '__main__':
                     average_loss_ll_paf += lss_ll_paf * len(images_test)
                     average_loss_ll_heat += lss_ll_heat * len(images_test)
                     total_cnt += len(images_test)
-
+                print("end2")
                 logger.info('validation(%d) %s loss=%f, loss_ll=%f, loss_ll_paf=%f, loss_ll_heat=%f' % (total_cnt, args.tag, average_loss / total_cnt, average_loss_ll / total_cnt, average_loss_ll_paf / total_cnt, average_loss_ll_heat / total_cnt))
                 last_gs_num2 = gs_num
 
@@ -259,7 +263,7 @@ if __name__ == '__main__':
                     feed_dict={q_inp: np.array((sample_image + val_image) * max(1, (args.batchsize // 16)))}
                 )
                 pafMat, heatMat = outputMat[:, :, :, 19:], outputMat[:, :, :, :19]
-
+                print("end3")
                 sample_results = []
                 for i in range(len(sample_image)):
                     test_result = CocoPose.display_image(sample_image[i], heatMat[i], pafMat[i], as_numpy=True)
@@ -273,7 +277,7 @@ if __name__ == '__main__':
                     test_result = cv2.resize(test_result, (640, 640))
                     test_result = test_result.reshape([640, 640, 3]).astype(float)
                     test_results.append(test_result)
-
+                print("end4")
                 # save summary
                 summary = sess.run(merged_validate_op, feed_dict={
                     valid_loss: average_loss / total_cnt,
@@ -286,6 +290,10 @@ if __name__ == '__main__':
                 if last_log_epoch2 < curr_epoch:
                     file_writer.add_summary(summary, curr_epoch)
                     last_log_epoch2 = curr_epoch
+                print("end5")
 
         saver.save(sess, os.path.join(modelpath, args.tag, 'model'), global_step=global_step)
+        print("end6")
+        coord.request_stop()
+        #coord.join(threads)
     logger.info('optimization finished. %f' % (time.time() - time_started))
