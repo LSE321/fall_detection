@@ -7,6 +7,8 @@ import numpy as np
 
 import os
 
+import socket
+
 from tf_pose.estimator import TfPoseEstimator
 from tf_pose.networks import get_graph_path, model_wh
 
@@ -30,7 +32,7 @@ if __name__ == '__main__':
     parser.add_argument('--resize-out-ratio', type=float, default=4.0,
                         help='if provided, resize heatmaps before they are post-processed. default=1.0')
 
-    parser.add_argument('--model', type=str, default='mobilenet_thin', help='cmu / mobilenet_thin / mobilenet_v2_large / mobilenet_v2_small')
+    parser.add_argument('--model', type=str, default='cmu', help='cmu / mobilenet_thin / mobilenet_v2_large / mobilenet_v2_small')
     parser.add_argument('--show-process', type=bool, default=False,
                         help='for debug purpose, if enabled, speed for inference is dropped.')
 
@@ -52,37 +54,68 @@ if __name__ == '__main__':
 
     y1 = [0, 0]
     frame = 0
-
+    last_time=time.time()
+    fcount = 0
+    out = cv2.VideoWriter('output.avi', cv2.VideoWriter_fourcc('M','J','P','G'),
+                                  10, (image.shape[1], image.shape[0]))
+   
     while True:
         ret_val, image = cam.read()
-
-        logger.debug('image process+')
+        if image is None:
+            print("NULL")
+            break
+        """
+        i_h, i_w=image.shape[:2]
+        i_h=480*i_h//i_w
+        i_w=480
+        image=cv2.resize(image, (i_w, i_h), interpolation=cv2.INTER_AREA)
+        
+        fcount+=1
+        if fcount%5 != 0:
+            continue
+        """
+        img_y=cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb)
+        ycrcb_planes=cv2.split(img_y)
+        
+        if(np.mean(ycrcb_planes[0])<70):
+            ycrcb_ss=list(ycrcb_planes)
+            ycrcb_ss[0]=cv2.equalizeHist(ycrcb_ss[0])
+            dst_y=cv2.merge(ycrcb_ss)
+            image=cv2.cvtColor(dst_y, cv2.COLOR_YCrCb2BGR)
+        
+        
+        #logger.debug('image process+')
         humans = e.inference(image, resize_to_default=(w > 0 and h > 0), upsample_size=args.resize_out_ratio)
 
-        logger.debug('postprocess+')
+        #logger.debug('postprocess+')
         image = TfPoseEstimator.draw_humans(image, humans, imgcopy=False)
 
-        logger.debug('show+')
+        #logger.debug('show+')
         no_people = len(humans)
         print("No. of people: ", no_people)
 
-        for human in humans:
-            for i in range(len(humans)):
-                try:
+        if (no_people==1):
+            for human in humans:
+                for i in range(len(humans)):
+                    #try:
                     a = human.body_parts[0]  # head shot
                     x = a.x*image.shape[1]
-                    y = a.x*image.shape[0]
+                    y = a.y*image.shape[0]
                     y1.append(y)
-                except:
-                    pass
-                if ((y - y1[-2]) > 60):
-                    print("Fall Detected")
                     cv2.putText(image,
-                                "FALL DETECTED",
-                                (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                                (0, 0, 255), 2, 11)
-
-
+                    "head: %d, %d" % (x, y),
+                    (10, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                    (255, 255, 255), 2)
+                    #except:
+                        #pass
+                    if (len(y1)>3) and ((y - y1[-2]) > (image.shape[0]/8)) and ((time.time()-last_time)<30):
+                        print("Fall Detected")
+                        cv2.putText(image,
+                                    "FALL DETECTED",
+                                    (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                                    (0, 0, 255), 2, 11)
+                    last_time=time.time()
+        
         cv2.putText(image,
                     "FPS: %f" % (1.0 / (time.time() - fps_time)),
                     (10, 20),  cv2.FONT_HERSHEY_SIMPLEX, 0.5,
@@ -94,11 +127,10 @@ if __name__ == '__main__':
         cv2.imshow('tf-pose-estimation result', image)
         fps_time = time.time()
         if(frame == 0) and (args.save_video):
-            out = cv2.VideoWriter('output.avi', cv2.VideoWriter_fourcc('M','J','P','G'),
-                                  20, (image.shape[1], image.shape[0]))
+            
             out.write(image)
         if cv2.waitKey(1) == 27:
             break
-        logger.debug('finished+')
+        #logger.debug('finished+')
 
     cv2.destroyAllWindows()
