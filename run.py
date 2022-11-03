@@ -43,7 +43,23 @@ if __name__ == '__main__':
     if image is None:
         logger.error('Image can not be read, path=%s' % args.image)
         sys.exit(-1)
-
+    
+    i_h, i_w=image.shape[:2]
+    i_h=480*i_h//i_w
+    i_w=480
+    image=cv2.resize(image, (i_w, i_h), interpolation=cv2.INTER_AREA)
+        
+    
+    img_y=cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb)
+    ycrcb_planes=cv2.split(img_y)
+    ycrcb_ss=list(ycrcb_planes)
+    if(np.mean(ycrcb_ss[0])<70):
+        ycrcb_ss[0]=cv2.equalizeHist(ycrcb_ss[0])
+        dst_y=cv2.merge(ycrcb_ss)
+        image=cv2.cvtColor(dst_y, cv2.COLOR_YCrCb2BGR)
+    
+    
+    cv2.imwrite("./te5_result12.png", image)
     t = time.time()
     humans = e.inference(image, resize_to_default=(w > 0 and h > 0), upsample_size=args.resize_out_ratio)
     elapsed = time.time() - t
@@ -51,18 +67,20 @@ if __name__ == '__main__':
     logger.info('inference image: %s in %.4f seconds.' % (args.image, elapsed))
 
     image = TfPoseEstimator.draw_humans(image, humans, imgcopy=False)
+    
+    
 
     try:
         import matplotlib.pyplot as plt
 
-        fig = plt.figure()
-        a = fig.add_subplot(2, 2, 1)
-        a.set_title('Result')
+        #fig = plt.figure()
+        #a = fig.add_subplot(2, 2, 1)
+        #a.set_title('Result')
         plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
 
         bgimg = cv2.cvtColor(image.astype(np.uint8), cv2.COLOR_BGR2RGB)
         bgimg = cv2.resize(bgimg, (e.heatMat.shape[1], e.heatMat.shape[0]), interpolation=cv2.INTER_AREA)
-
+        """
         # show network output
         a = fig.add_subplot(2, 2, 2)
         plt.imshow(bgimg, alpha=0.5)
@@ -84,6 +102,7 @@ if __name__ == '__main__':
         a.set_title('Vectormap-y')
         # plt.imshow(CocoPose.get_bgimg(inp, target_size=(vectmap.shape[1], vectmap.shape[0])), alpha=0.5)
         plt.imshow(tmp2_even, cmap=plt.cm.gray, alpha=0.5)
+        """
         plt.colorbar()
         plt.show()
     except Exception as e:
