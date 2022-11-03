@@ -9,7 +9,7 @@ from tf_pose.common import CocoPart
 
 _network_w = 368
 _network_h = 368
-_scale = 2
+_scale = 8
 
 
 def set_network_input_wh(w, h):
