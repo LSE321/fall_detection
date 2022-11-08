@@ -275,10 +275,10 @@ class CocoPose(RNGDataFlow):
         self.only_idx = only_idx
 
         if is_train:
-            whole_path = os.path.join(path, 'person_keypoints_train2017.json')
+            whole_path = os.path.join(path, 'person_keypoints_train2017_new.json')
         else:
-            whole_path = os.path.join(path, 'person_keypoints_val2017.json')
-        self.img_path = (img_path if img_path is not None else '') + ('train2017/' if is_train else 'val2017/')
+            whole_path = os.path.join(path, 'person_keypoints_val2017_new.json')
+        self.img_path = (img_path if img_path is not None else '') + ('train_dd/' if is_train else 'val_new/')
         self.coco = COCO(whole_path)
 
         logger.info('%s dataset %d' % (path, self.size()))
