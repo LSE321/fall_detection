@@ -31,9 +31,9 @@ if __name__ == '__main__':
     parser.add_argument('--model', default='cmu', help='model name')
     parser.add_argument('--datapath', type=str, default='C:/Users/User/Desktop/python/Fall_Detection/tf_pose/data/public/rw/coco/annotations')
     parser.add_argument('--imgpath', type=str, default='C:/Users/User/Desktop/python/Fall_Detection/tf_pose/data/public/rw/coco/')
-    parser.add_argument('--batchsize', type=int, default=64)
-    parser.add_argument('--gpus', type=int, default=4)
-    parser.add_argument('--max-epoch', type=int, default=50)
+    parser.add_argument('--batchsize', type=int, default=32)
+    parser.add_argument('--gpus', type=int, default=1)
+    parser.add_argument('--max-epoch', type=int, default=5)
     parser.add_argument('--lr', type=str, default='0.001')
     parser.add_argument('--tag', type=str, default='test')
     parser.add_argument('--checkpoint', type=str, default='')
@@ -43,7 +43,7 @@ if __name__ == '__main__':
     parser.add_argument('--quant-delay', type=int, default=-1)
     args = parser.parse_args()
 
-    modelpath = logpath = './models/train/'
+    modelpath = logpath = 'C:/Users/User/Desktop/python/Fall_Detection/tf_pose/models/train/'
 
     if args.gpus <= 0:
         raise Exception('gpus <= 0')
@@ -120,7 +120,7 @@ if __name__ == '__main__':
         total_loss_ll = tf.reduce_sum([total_loss_ll_paf, total_loss_ll_heat])
 
         # define optimizer
-        step_per_epoch = 118287 // args.batchsize
+        step_per_epoch = 128 // args.batchsize
         global_step = tf.Variable(0, trainable=False)
         if ',' not in args.lr:
             starter_learning_rate = float(args.lr)
@@ -160,8 +160,8 @@ if __name__ == '__main__':
     valid_loss_ll_heat = tf.placeholder(tf.float32, shape=[])
     sample_train = tf.placeholder(tf.float32, shape=(4, 640, 640, 3))
     sample_valid = tf.placeholder(tf.float32, shape=(12, 640, 640, 3))
-    train_img = tf.summary.image('training sample', sample_train, 4)
-    valid_img = tf.summary.image('validation sample', sample_valid, 12)
+    train_img = tf.summary.image('training_sample', sample_train, 4)
+    valid_img = tf.summary.image('validation_sample', sample_valid, 12)
     valid_loss_t = tf.summary.scalar("loss_valid", valid_loss)
     valid_loss_ll_t = tf.summary.scalar("loss_valid_lastlayer", valid_loss_ll)
     merged_validate_op = tf.summary.merge([train_img, valid_img, valid_loss_t, valid_loss_ll_t])
@@ -210,13 +210,13 @@ if __name__ == '__main__':
         last_log_epoch1 = last_log_epoch2 = -1
         while True:
             _, gs_num = sess.run([train_op, global_step])
-            print(gs_num)
+            #print(gs_num)
             curr_epoch = float(gs_num) / step_per_epoch
 
             if gs_num > step_per_epoch * args.max_epoch:
                 break
 
-            if gs_num - last_gs_num >= 500:
+            if gs_num - last_gs_num >= 4:
                 train_loss, train_loss_ll, train_loss_ll_paf, train_loss_ll_heat, lr_val, summary = sess.run([total_loss, total_loss_ll, total_loss_ll_paf, total_loss_ll_heat, learning_rate, merged_summary_op])
 
                 # log of training loss / accuracy
@@ -228,7 +228,7 @@ if __name__ == '__main__':
                     file_writer.add_summary(summary, curr_epoch)
                     last_log_epoch1 = curr_epoch
 
-            if gs_num - last_gs_num2 >= 2000:
+            if gs_num - last_gs_num2 >= 10:
                 # save weights
                 saver.save(sess, os.path.join(modelpath, args.tag, 'model_latest'), global_step=global_step)
 
@@ -294,6 +294,6 @@ if __name__ == '__main__':
 
         saver.save(sess, os.path.join(modelpath, args.tag, 'model'), global_step=global_step)
         print("end6")
-        coord.request_stop()
+        #coord.request_stop()
         #coord.join(threads)
     logger.info('optimization finished. %f' % (time.time() - time_started))
