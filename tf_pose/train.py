@@ -1,6 +1,6 @@
 import matplotlib as mpl
 mpl.use('Agg')      # training mode, no screen should be open. (It will block training loop)
-
+import matplotlib.pyplot as plt
 import argparse
 import logging
 import os
@@ -31,9 +31,9 @@ if __name__ == '__main__':
     parser.add_argument('--model', default='cmu', help='model name')
     parser.add_argument('--datapath', type=str, default='C:/Users/User/Desktop/python/Fall_Detection/tf_pose/data/public/rw/coco/annotations')
     parser.add_argument('--imgpath', type=str, default='C:/Users/User/Desktop/python/Fall_Detection/tf_pose/data/public/rw/coco/')
-    parser.add_argument('--batchsize', type=int, default=32)
+    parser.add_argument('--batchsize', type=int, default=64)
     parser.add_argument('--gpus', type=int, default=1)
-    parser.add_argument('--max-epoch', type=int, default=5)
+    parser.add_argument('--max-epoch', type=int, default=30)
     parser.add_argument('--lr', type=str, default='0.001')
     parser.add_argument('--tag', type=str, default='test')
     parser.add_argument('--checkpoint', type=str, default='')
@@ -120,13 +120,13 @@ if __name__ == '__main__':
         total_loss_ll = tf.reduce_sum([total_loss_ll_paf, total_loss_ll_heat])
 
         # define optimizer
-        step_per_epoch = 128 // args.batchsize
+        step_per_epoch = 256 // args.batchsize
         global_step = tf.Variable(0, trainable=False)
         if ',' not in args.lr:
             starter_learning_rate = float(args.lr)
             # learning_rate = tf.train.exponential_decay(starter_learning_rate, global_step,
             #                                            decay_steps=10000, decay_rate=0.33, staircase=True)
-            learning_rate = tf.train.cosine_decay(starter_learning_rate, global_step, args.max_epoch * step_per_epoch, alpha=0.0)
+            learning_rate = tf.train.cosine_decay(starter_learning_rate, global_step, args.max_epoch * step_per_epoch, alpha=1.0)
         else:
             lrs = [float(x) for x in args.lr.split(',')]
             boundaries = [step_per_epoch * 5 * i for i, _ in range(len(lrs)) if i > 0]
@@ -138,7 +138,7 @@ if __name__ == '__main__':
         tf.contrib.quantize.create_training_graph(input_graph=g, quant_delay=args.quant_delay)
 
     # optimizer = tf.train.RMSPropOptimizer(learning_rate, decay=0.0005, momentum=0.9, epsilon=1e-10)
-    optimizer = tf.train.AdamOptimizer(learning_rate, epsilon=1e-8)
+    optimizer = tf.train.AdamOptimizer(learning_rate=0.001, epsilon=1e-8)
     # optimizer = tf.train.MomentumOptimizer(learning_rate, momentum=0.8, use_locking=True, use_nesterov=True)
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
@@ -169,10 +169,17 @@ if __name__ == '__main__':
     saver = tf.train.Saver(max_to_keep=1000)
     config = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
     config.gpu_options.allow_growth = True
+    
+    train_x=[]
+    train_y=[]
+    val_x=[]
+    val_y=[]
+    lr_x=[]
+    lr_y=[]
+    
     with tf.Session(config=config) as sess:
         logger.info('model weights initialization')
         sess.run(tf.global_variables_initializer())
-        #모델
         if args.checkpoint and os.path.isdir(args.checkpoint):
             logger.info('Restore from checkpoint...')
             # loader = tf.train.Saver(net.restorable_variables())
@@ -210,25 +217,27 @@ if __name__ == '__main__':
         last_log_epoch1 = last_log_epoch2 = -1
         while True:
             _, gs_num = sess.run([train_op, global_step])
-            #print(gs_num)
             curr_epoch = float(gs_num) / step_per_epoch
 
             if gs_num > step_per_epoch * args.max_epoch:
                 break
 
-            if gs_num - last_gs_num >= 4:
+            if gs_num - last_gs_num >= step_per_epoch:
                 train_loss, train_loss_ll, train_loss_ll_paf, train_loss_ll_heat, lr_val, summary = sess.run([total_loss, total_loss_ll, total_loss_ll_paf, total_loss_ll_heat, learning_rate, merged_summary_op])
 
                 # log of training loss / accuracy
                 batch_per_sec = (gs_num - initial_gs_num) / (time.time() - time_started)
                 logger.info('epoch=%.2f step=%d, %0.4f examples/sec lr=%f, loss=%g, loss_ll=%g, loss_ll_paf=%g, loss_ll_heat=%g' % (gs_num / step_per_epoch, gs_num, batch_per_sec * args.batchsize, lr_val, train_loss, train_loss_ll, train_loss_ll_paf, train_loss_ll_heat))
                 last_gs_num = gs_num
+                
+                train_y.append(train_loss)
+                lr_y.append(lr_val)
 
                 if last_log_epoch1 < curr_epoch:
                     file_writer.add_summary(summary, curr_epoch)
                     last_log_epoch1 = curr_epoch
 
-            if gs_num - last_gs_num2 >= 10:
+            if gs_num - last_gs_num2 >= step_per_epoch*2:
                 # save weights
                 saver.save(sess, os.path.join(modelpath, args.tag, 'model_latest'), global_step=global_step)
 
@@ -241,7 +250,6 @@ if __name__ == '__main__':
                     #df_valid.reset_state()
                     del df_valid
                     df_valid = None
-                print("end1")
                 # log of test accuracy
                 for images_test, heatmaps, vectmaps in validation_cache:
                     lss, lss_ll, lss_ll_paf, lss_ll_heat, vectmap_sample, heatmap_sample = sess.run(
@@ -253,9 +261,10 @@ if __name__ == '__main__':
                     average_loss_ll_paf += lss_ll_paf * len(images_test)
                     average_loss_ll_heat += lss_ll_heat * len(images_test)
                     total_cnt += len(images_test)
-                print("end2")
                 logger.info('validation(%d) %s loss=%f, loss_ll=%f, loss_ll_paf=%f, loss_ll_heat=%f' % (total_cnt, args.tag, average_loss / total_cnt, average_loss_ll / total_cnt, average_loss_ll_paf / total_cnt, average_loss_ll_heat / total_cnt))
                 last_gs_num2 = gs_num
+                
+                val_y.append(average_loss/total_cnt)
 
                 sample_image = [enqueuer.last_dp[0][i] for i in range(4)]
                 outputMat = sess.run(
@@ -263,7 +272,6 @@ if __name__ == '__main__':
                     feed_dict={q_inp: np.array((sample_image + val_image) * max(1, (args.batchsize // 16)))}
                 )
                 pafMat, heatMat = outputMat[:, :, :, 19:], outputMat[:, :, :, :19]
-                print("end3")
                 sample_results = []
                 for i in range(len(sample_image)):
                     test_result = CocoPose.display_image(sample_image[i], heatMat[i], pafMat[i], as_numpy=True)
@@ -277,7 +285,6 @@ if __name__ == '__main__':
                     test_result = cv2.resize(test_result, (640, 640))
                     test_result = test_result.reshape([640, 640, 3]).astype(float)
                     test_results.append(test_result)
-                print("end4")
                 # save summary
                 summary = sess.run(merged_validate_op, feed_dict={
                     valid_loss: average_loss / total_cnt,
@@ -290,10 +297,30 @@ if __name__ == '__main__':
                 if last_log_epoch2 < curr_epoch:
                     file_writer.add_summary(summary, curr_epoch)
                     last_log_epoch2 = curr_epoch
-                print("end5")
 
+        train_x=np.arange(len(train_y))
+        val_x=np.arange(len(val_y))
+        lr_x=np.arange(len(lr_y))
+        plt.figure(1)
+        plt.plot(train_x, train_y, c='red', label='train_loss')
+        plt.legend()
+        plt.xlabel('epochs')
+        plt.ylabel('loss')
+        plt.savefig('./train.png')
+        
+        plt.figure(2)
+        plt.plot(val_x, val_y, c='green', label='val_loss')
+        plt.legend()
+        plt.xlabel('epochs')
+        plt.ylabel('loss')
+        plt.savefig('./val.png')
+        
+        plt.figure(3)
+        plt.plot(lr_x, lr_y, c='blue', label='learning_rate')
+        plt.legend()
+        plt.xlabel('epochs')
+        plt.ylabel('lr')
+        plt.savefig('./lr.png')
+        
         saver.save(sess, os.path.join(modelpath, args.tag, 'model'), global_step=global_step)
-        print("end6")
-        #coord.request_stop()
-        #coord.join(threads)
     logger.info('optimization finished. %f' % (time.time() - time_started))
