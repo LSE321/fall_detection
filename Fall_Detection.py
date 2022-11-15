@@ -177,15 +177,6 @@ if __name__ == '__main__':
                         else:
                             pass
                 
-                """
-                if (len(y1)>3) and ((head_y - y1[-2]) > (image.shape[0]/8)) and ((time.time()-last_time)<30):
-                    print("Fall Detected")
-                    cv2.putText(image,
-                                "FALL DETECTED",
-                                (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                                (0, 0, 255), 2, 11)
-                last_time=time.time()
-        """
         cv2.putText(image,
                     "FPS: %f" % (1.0 / (time.time() - fps_time)),
                     (10, 20),  cv2.FONT_HERSHEY_SIMPLEX, 0.5,
