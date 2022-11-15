@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 
 import os
-
+import math
 import socket
 
 from tf_pose.estimator import TfPoseEstimator
@@ -56,6 +56,8 @@ if __name__ == '__main__':
     frame = 0
     last_time=time.time()
     fcount = 0
+    fall_state=False
+    fall_count=0
     out = cv2.VideoWriter('output.avi', cv2.VideoWriter_fourcc('M','J','P','G'),
                                   10, (image.shape[1], image.shape[0]))
    
@@ -64,16 +66,16 @@ if __name__ == '__main__':
         if image is None:
             print("NULL")
             break
-        """
+        
         i_h, i_w=image.shape[:2]
         i_h=480*i_h//i_w
         i_w=480
         image=cv2.resize(image, (i_w, i_h), interpolation=cv2.INTER_AREA)
         
         fcount+=1
-        if fcount%5 != 0:
+        if fcount%15 != 0:
             continue
-        """
+        
         img_y=cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb)
         ycrcb_planes=cv2.split(img_y)
         
@@ -96,26 +98,94 @@ if __name__ == '__main__':
 
         if (no_people==1):
             for human in humans:
-                for i in range(len(humans)):
-                    #try:
-                    a = human.body_parts[0]  # head shot
-                    x = a.x*image.shape[1]
-                    y = a.y*image.shape[0]
-                    y1.append(y)
+                try:
+                    if 0 in human.body_parts:
+                        a = human.body_parts[0]  # head shot
+                    else:
+                        a = human.body_parts[1]
+                    head_x = a.x*image.shape[1]
+                    head_y = a.y*image.shape[0]
+                    y1.append(head_y)
                     cv2.putText(image,
-                    "head: %d, %d" % (x, y),
+                    "head: %d, %d" % (head_x, head_y),
                     (10, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                     (255, 255, 255), 2)
-                    #except:
-                        #pass
-                    if (len(y1)>3) and ((y - y1[-2]) > (image.shape[0]/8)) and ((time.time()-last_time)<30):
+                except:
+                    pass
+                
+                if fall_state:
+                    fall_count+=1
+                    if fall_count<=5:
+                        if (y1[-(fall_count+1)]-head_y)>20:
+                            bbox_x=[]
+                            bbox_y=[]
+                            for i in human.body_parts:
+                                bbox_x.append(human.body_parts[i].x)
+                                bbox_y.append(human.body_parts[i].y)
+                            min_x=int(min(bbox_x)*image.shape[1])
+                            min_y=int(min(bbox_y)*image.shape[0])
+                            max_x=int(max(bbox_x)*image.shape[1])
+                            max_y=int(max(bbox_y)*image.shape[0])
+                            if (max_y-min_y)/(max_x-min_x)>1:
+                                print("stand")
+                                fall_state=False
+                    else:
                         print("Fall Detected")
                         cv2.putText(image,
-                                    "FALL DETECTED",
-                                    (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                                    (0, 0, 255), 2, 11)
-                    last_time=time.time()
-        
+                                "FALL DETECTED",
+                                (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                                (0, 0, 255), 2, 11)
+                        fall_state=False
+                    
+                    
+                else:
+                    if head_y - y1[-2] > 60: #머리 낙하 속도 확인
+                        #중심선 양끝 점 구하기
+                        if 8 in human.body_parts:
+                            key_r=human.body_parts[8]
+                            key_l=human.body_parts[11]
+                        elif 9 in human.body_parts:
+                            key_r=human.body_parts[9]
+                            key_l=human.body_parts[12]
+                        elif 10 in human.body_parts:
+                            key_r=human.body_parts[10]
+                            key_l=human.body_parts[13]
+                        else:
+                            pass
+                        
+                        if key_r: 
+                            key_cen_x=(key_r.x+key_l.x)/2
+                            key_cen_y=(key_r.y+key_l.y)/2
+                            #각도 계산
+                            theta=math.degrees(math.atan(abs(head_y-key_cen_y)/abs(head_x-key_cen_x)))
+                            if theta<45:
+                                #bounding box
+                                bbox_x=[]
+                                bbox_y=[]
+                                for i in human.body_parts:
+                                    bbox_x.append(human.body_parts[i].x)
+                                    bbox_y.append(human.body_parts[i].y)
+                                min_x=int(min(bbox_x)*image.shape[1])
+                                min_y=int(min(bbox_y)*image.shape[0])
+                                max_x=int(max(bbox_x)*image.shape[1])
+                                max_y=int(max(bbox_y)*image.shape[0])
+                                image=cv2.rectangle(image, (min_x, min_y), (max_x, max_y), (0, 0, 255))
+                                #세로/가로 <1이면
+                                if (max_y-min_y)/(max_x-min_x)<1:
+                                    print("fall state")
+                                    fall_state=True
+                        else:
+                            pass
+                
+                """
+                if (len(y1)>3) and ((head_y - y1[-2]) > (image.shape[0]/8)) and ((time.time()-last_time)<30):
+                    print("Fall Detected")
+                    cv2.putText(image,
+                                "FALL DETECTED",
+                                (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                                (0, 0, 255), 2, 11)
+                last_time=time.time()
+        """
         cv2.putText(image,
                     "FPS: %f" % (1.0 / (time.time() - fps_time)),
                     (10, 20),  cv2.FONT_HERSHEY_SIMPLEX, 0.5,
