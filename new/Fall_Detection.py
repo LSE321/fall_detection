@@ -132,9 +132,6 @@ if __name__ == '__main__':
         i_w=480
         image=cv2.resize(image, (i_w, i_h), interpolation=cv2.INTER_AREA)
         
-        filename1="./images/aa/input"+str(fcount)+".png"
-        cv2.imwrite(filename1, image)
-        
         img_y=cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb)
         ycrcb_planes=cv2.split(img_y)
         
@@ -209,6 +206,26 @@ if __name__ == '__main__':
                 else:
                     if head_y - y1[-2] >= 40: #머리 낙하 속도 확인
                         # 중심선 각도 체크해서 상황에 따라 bbox 비율 다르게 정/측면 기준 달라야지 
+                        theta=0
+                        hwratio=0
+                        
+                        if 8 in human.body_parts:
+                            key_r=human.body_parts[8]
+                            key_l=human.body_parts[11]
+                        elif 9 in human.body_parts:
+                            key_r=human.body_parts[9]
+                            key_l=human.body_parts[12]
+                        elif 10 in human.body_parts:
+                            key_r=human.body_parts[10]
+                            key_l=human.body_parts[13]
+                        else:
+                            pass
+                        
+                        if key_r: 
+                            key_cen_x=(key_r.x+key_l.x)/2
+                            key_cen_y=(key_r.y+key_l.y)/2
+                            #각도 계산
+                            theta=math.degrees(math.atan(abs(head_y-key_cen_y)/abs(head_x-key_cen_x)))
                         
                         #bounding box
                         bbox_x=[]
@@ -221,8 +238,13 @@ if __name__ == '__main__':
                         max_x=int(max(bbox_x)*image.shape[1])
                         max_y=int(max(bbox_y)*image.shape[0])
                         image=cv2.rectangle(image, (min_x, min_y), (max_x, max_y), (0, 0, 255))
-                        #세로/가로 <1이면
-                        if (max_y-min_y)/(max_x-min_x)<1.5:
+                        
+                        if abs(theta)<45:
+                            hwratio=1
+                        else:
+                            hwratio=1.4
+                        
+                        if (max_y-min_y)/(max_x-min_x)<hwratio:
                             print("fall state")
                             cv2.putText(image,
                                 "FALL state",
@@ -242,10 +264,7 @@ if __name__ == '__main__':
                     (255, 255, 255), 2)
         cv2.imshow('tf-pose-estimation result', image)
         fps_time = time.time()
-        filename="./images/aa/output"+str(fcount)+".png"
-        cv2.imwrite(filename, image)
         if(frame == 0) and (args.save_video):
-            
             out.write(image)
         if cv2.waitKey(1) == 27:
             break
