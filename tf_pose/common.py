@@ -119,18 +119,18 @@ def read_imgfile(path, width=None, height=None):
 
 def get_sample_images(w, h):
     val_image = [
-        read_imgfile('C:/Users/User/Desktop/python/Fall_Detection/tf_pose/images/p1.jpg', w, h),
-        read_imgfile('C:/Users/User/Desktop/python/Fall_Detection/tf_pose/images/p2.jpg', w, h),
-        read_imgfile('C:/Users/User/Desktop/python/Fall_Detection/tf_pose/images/p3.jpg', w, h),
-        read_imgfile('C:/Users/User/Desktop/python/Fall_Detection/tf_pose/images/golf.jpg', w, h),
-        read_imgfile('C:/Users/User/Desktop/python/Fall_Detection/tf_pose/images/hand1.jpg', w, h),
-        read_imgfile('C:/Users/User/Desktop/python/Fall_Detection/tf_pose/images/hand2.jpg', w, h),
-        read_imgfile('C:/Users/User/Desktop/python/Fall_Detection/tf_pose/images/apink1_crop.jpg', w, h),
-        read_imgfile('C:/Users/User/Desktop/python/Fall_Detection/tf_pose/images/ski.jpg', w, h),
-        read_imgfile('C:/Users/User/Desktop/python/Fall_Detection/tf_pose/images/apink2.jpg', w, h),
-        read_imgfile('C:/Users/User/Desktop/python/Fall_Detection/tf_pose/images/apink3.jpg', w, h),
-        read_imgfile('C:/Users/User/Desktop/python/Fall_Detection/tf_pose/images/handsup1.jpg', w, h),
-        read_imgfile('C:/Users/User/Desktop/python/Fall_Detection/tf_pose/images/p3_dance.png', w, h),
+        read_imgfile('./images/p1.jpg', w, h),
+        read_imgfile('./images/p2.jpg', w, h),
+        read_imgfile('./images/p3.jpg', w, h),
+        read_imgfile('./images/golf.jpg', w, h),
+        read_imgfile('./images/hand1.jpg', w, h),
+        read_imgfile('./images/hand2.jpg', w, h),
+        read_imgfile('./images/apink1_crop.jpg', w, h),
+        read_imgfile('./images/ski.jpg', w, h),
+        read_imgfile('./images/apink2.jpg', w, h),
+        read_imgfile('./images/apink3.jpg', w, h),
+        read_imgfile('./images/handsup1.jpg', w, h),
+        read_imgfile('./images/p3_dance.png', w, h),
     ]
     return val_image
 
