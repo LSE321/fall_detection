@@ -12,7 +12,7 @@ from tf_pose.network_mobilenet_v2 import Mobilenetv2Network
 
 def _get_base_path():
     if not os.environ.get('OPENPOSE_MODEL', ''):
-        return 'C:/Users/User/Desktop/python/Fall_Detection/models'
+        return './../models'
     return os.environ.get('OPENPOSE_MODEL')
 
 
