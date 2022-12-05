@@ -29,8 +29,8 @@ logger.addHandler(ch)
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Training codes for Openpose using Tensorflow')
     parser.add_argument('--model', default='cmu', help='model name')
-    parser.add_argument('--datapath', type=str, default='C:/Users/User/Desktop/python/Fall_Detection/tf_pose/data/public/rw/coco/annotations')
-    parser.add_argument('--imgpath', type=str, default='C:/Users/User/Desktop/python/Fall_Detection/tf_pose/data/public/rw/coco/')
+    parser.add_argument('--datapath', type=str, default='./data/public/rw/coco/annotations')
+    parser.add_argument('--imgpath', type=str, default='./data/public/rw/coco/')
     parser.add_argument('--batchsize', type=int, default=64)
     parser.add_argument('--gpus', type=int, default=1)
     parser.add_argument('--max-epoch', type=int, default=30)
@@ -43,31 +43,29 @@ if __name__ == '__main__':
     parser.add_argument('--quant-delay', type=int, default=-1)
     args = parser.parse_args()
 
-    modelpath = logpath = 'C:/Users/User/Desktop/python/Fall_Detection/tf_pose/models/train/'
+    modelpath = logpath = './models/train/'
 
     if args.gpus <= 0:
         raise Exception('gpus <= 0')
 
     # define input placeholder
-    set_network_input_wh(args.input_width, args.input_height) # 입력값으로 network_w, h 설정
+    set_network_input_wh(args.input_width, args.input_height) 
     scale = 4
 
     if args.model in ['cmu', 'vgg'] or 'mobilenet' in args.model:
         scale = 8
 
-    set_network_scale(scale) #scale 반영
-    output_w, output_h = args.input_width // scale, args.input_height // scale # //: 나누기+소수점 버림. 입력 크기에서 줄인다..?
+    set_network_scale(scale)
+    output_w, output_h = args.input_width // scale, args.input_height // scale 
 
     logger.info('define model+')
     with tf.device(tf.DeviceSpec(device_type="CPU")):
         input_node = tf.placeholder(tf.float32, shape=(args.batchsize, args.input_height, args.input_width, 3), name='image')
-        #데이터타입 float, 입력 데이터 (batchsize, input_h, input_w, 3), 이름 image
-        #placeholder: 입력값을 나중에 받기 위해 비워두는 매개변수.. 빈 그릇
         vectmap_node = tf.placeholder(tf.float32, shape=(args.batchsize, output_h, output_w, 38), name='vectmap')
         heatmap_node = tf.placeholder(tf.float32, shape=(args.batchsize, output_h, output_w, 19), name='heatmap')
 
         # prepare data
-        df = get_dataflow_batch(args.datapath, True, args.batchsize, img_path=args.imgpath) #훈련용 데이터 전처리(회전 크롭 등) 포함 불러오기
+        df = get_dataflow_batch(args.datapath, True, args.batchsize, img_path=args.imgpath)
         enqueuer = DataFlowToQueue(df, [input_node, heatmap_node, vectmap_node], queue_size=100)
         q_inp, q_heat, q_vect = enqueuer.dequeue()
 
@@ -75,7 +73,7 @@ if __name__ == '__main__':
     df_valid.reset_state()
     validation_cache = []
 
-    val_image = get_sample_images(args.input_width, args.input_height) #평가용 이미지... 함수 참고해서 파일 추가하고 수정?
+    val_image = get_sample_images(args.input_width, args.input_height)
     logger.debug('tensorboard val image: %d' % len(val_image))
     logger.debug(q_inp)
     logger.debug(q_heat)
@@ -102,7 +100,7 @@ if __name__ == '__main__':
                 outputs.append(net.get_output())
 
                 l1s, l2s = net.loss_l1_l2()
-                for idx, (l1, l2) in enumerate(zip(l1s, l2s)): #enumerate: idx 뽑기 / zip: l1s, l2s에서 순서 맞춰서 하나씩 뽑아 (l1, l2) 만들어주기
+                for idx, (l1, l2) in enumerate(zip(l1s, l2s)):
                     loss_l1 = tf.nn.l2_loss(tf.concat(l1, axis=0) - q_vect_split[gpu_id], name='loss_l1_stage%d_tower%d' % (idx, gpu_id))
                     loss_l2 = tf.nn.l2_loss(tf.concat(l2, axis=0) - q_heat_split[gpu_id], name='loss_l2_stage%d_tower%d' % (idx, gpu_id))
                     losses.append(tf.reduce_mean([loss_l1, loss_l2]))
@@ -124,8 +122,6 @@ if __name__ == '__main__':
         global_step = tf.Variable(0, trainable=False)
         if ',' not in args.lr:
             starter_learning_rate = float(args.lr)
-            # learning_rate = tf.train.exponential_decay(starter_learning_rate, global_step,
-            #                                            decay_steps=10000, decay_rate=0.33, staircase=True)
             learning_rate = tf.train.cosine_decay(starter_learning_rate, global_step, args.max_epoch * step_per_epoch, alpha=1.0)
         else:
             lrs = [float(x) for x in args.lr.split(',')]
@@ -137,9 +133,7 @@ if __name__ == '__main__':
         g = tf.get_default_graph()
         tf.contrib.quantize.create_training_graph(input_graph=g, quant_delay=args.quant_delay)
 
-    # optimizer = tf.train.RMSPropOptimizer(learning_rate, decay=0.0005, momentum=0.9, epsilon=1e-10)
     optimizer = tf.train.AdamOptimizer(learning_rate=0.001, epsilon=1e-8)
-    # optimizer = tf.train.MomentumOptimizer(learning_rate, momentum=0.8, use_locking=True, use_nesterov=True)
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
         train_op = optimizer.minimize(total_loss, global_step, colocate_gradients_with_ops=True)
@@ -192,8 +186,8 @@ if __name__ == '__main__':
                 net.load(pretrain_path, sess, True)
             else:
                 try:
-                    loader = tf.train.Saver(net.restorable_variables(only_backbone=False)) #변수 저장
-                    loader.restore(sess, pretrain_path) #변수 복구
+                    loader = tf.train.Saver(net.restorable_variables(only_backbone=False))
+                    loader.restore(sess, pretrain_path)
                 except:
                     logger.info('Restore only weights in backbone layers.')
                     loader = tf.train.Saver(net.restorable_variables())
