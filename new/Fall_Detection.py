@@ -22,8 +22,6 @@ logger.addHandler(ch)
 
 fps_time = 0
 
-
-
 def sendMsg(soc):
     while True:
         msg = input('')
@@ -46,8 +44,7 @@ def sendImg(soc, img):
     soc.send(stringData)
     msg='/stop'
     soc.sendall(msg.encode(encoding='utf-8'))
-    
-    
+
 def recvMsg(soc):
     while True:
         data = soc.recv(1024)
@@ -76,8 +73,6 @@ class Client:
         t.start()
         t2 = threading.Thread(target=recvMsg, args=(self.client_soc,))
         t2.start()
-
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='tf-pose-estimation realtime webcam')
@@ -108,7 +103,8 @@ if __name__ == '__main__':
     ret_val, image = cam.read()
     logger.info('cam image=%dx%d' % (image.shape[1], image.shape[0]))
 
-    y1 = [0, 0]
+    head_y_list = [0, 0]
+    bbox_r_list=[1, 1, 1, 1]
     frame = 0
     last_time=time.time()
     fcount = 0
@@ -124,31 +120,23 @@ if __name__ == '__main__':
             break
         
         fcount+=1
-        if fcount%15 != 0:
+        if fcount%10 != 0:
             continue
         
         i_h, i_w=image.shape[:2]
         i_h=480*i_h//i_w
         i_w=480
         image=cv2.resize(image, (i_w, i_h), interpolation=cv2.INTER_AREA)
-        
         img_y=cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb)
         ycrcb_planes=cv2.split(img_y)
-        
         if(np.mean(ycrcb_planes[0])<70):
             ycrcb_ss=list(ycrcb_planes)
             ycrcb_ss[0]=cv2.equalizeHist(ycrcb_ss[0])
             dst_y=cv2.merge(ycrcb_ss)
             image=cv2.cvtColor(dst_y, cv2.COLOR_YCrCb2BGR)
         
-        
-        #logger.debug('image process+')
         humans = e.inference(image, resize_to_default=(w > 0 and h > 0), upsample_size=args.resize_out_ratio)
-
-        #logger.debug('postprocess+')
         image = TfPoseEstimator.draw_humans(image, humans, imgcopy=False)
-
-        #logger.debug('show+')
         no_people = len(humans)
         print("No. of people: ", no_people)
 
@@ -161,7 +149,20 @@ if __name__ == '__main__':
                         a = human.body_parts[1]
                     head_x = a.x*image.shape[1]
                     head_y = a.y*image.shape[0]
-                    y1.append(head_y)
+                    head_y_list.append(head_y)
+                    
+                    bbox_x=[]
+                    bbox_y=[]
+                    for i in human.body_parts:
+                        bbox_x.append(human.body_parts[i].x)
+                        bbox_y.append(human.body_parts[i].y)
+                    min_x=int(min(bbox_x)*image.shape[1])
+                    min_y=int(min(bbox_y)*image.shape[0])
+                    max_x=int(max(bbox_x)*image.shape[1])
+                    max_y=int(max(bbox_y)*image.shape[0])
+                    bbox_ratio=(max_y-min_y)/(max_x-min_x)
+                    bbox_r_list.append(bbox_ratio)
+                    
                     cv2.putText(image,
                     "head: %d, %d" % (head_x, head_y),
                     (10, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
@@ -171,19 +172,10 @@ if __name__ == '__main__':
                 
                 if fall_state:
                     fall_count+=1
-                    if fall_count<=10:
-                        if (y1[-(fall_count+1)]-head_y)>20:
-                            bbox_x=[]
-                            bbox_y=[]
-                            for i in human.body_parts:
-                                bbox_x.append(human.body_parts[i].x)
-                                bbox_y.append(human.body_parts[i].y)
-                            min_x=int(min(bbox_x)*image.shape[1])
-                            min_y=int(min(bbox_y)*image.shape[0])
-                            max_x=int(max(bbox_x)*image.shape[1])
-                            max_y=int(max(bbox_y)*image.shape[0])
+                    if fall_count<15:
+                        if (head_y_list[-(fall_count+1)]-head_y)>=0:
                             image=cv2.rectangle(image, (min_x, min_y), (max_x, max_y), (0, 0, 255))
-                            if (max_y-min_y)/(max_x-min_x)>1:
+                            if bbox_ratio>1:
                                 print("stand")
                                 cv2.putText(image,
                                 "STAND",
@@ -204,47 +196,12 @@ if __name__ == '__main__':
                     
                     
                 else:
-                    if head_y - y1[-2] >= 40: #머리 낙하 속도 확인
-                        # 중심선 각도 체크해서 상황에 따라 bbox 비율 다르게 정/측면 기준 달라야지 
+                    if head_y - head_y_list[-2] >= 20:
                         theta=0
-                        hwratio=0
-                        
-                        if 8 in human.body_parts:
-                            key_r=human.body_parts[8]
-                            key_l=human.body_parts[11]
-                        elif 9 in human.body_parts:
-                            key_r=human.body_parts[9]
-                            key_l=human.body_parts[12]
-                        elif 10 in human.body_parts:
-                            key_r=human.body_parts[10]
-                            key_l=human.body_parts[13]
-                        else:
-                            pass
-                        
-                        if key_r: 
-                            key_cen_x=(key_r.x+key_l.x)/2
-                            key_cen_y=(key_r.y+key_l.y)/2
-                            #각도 계산
-                            theta=math.degrees(math.atan(abs(head_y-key_cen_y)/abs(head_x-key_cen_x)))
-                        
-                        #bounding box
-                        bbox_x=[]
-                        bbox_y=[]
-                        for i in human.body_parts:
-                            bbox_x.append(human.body_parts[i].x)
-                            bbox_y.append(human.body_parts[i].y)
-                        min_x=int(min(bbox_x)*image.shape[1])
-                        min_y=int(min(bbox_y)*image.shape[0])
-                        max_x=int(max(bbox_x)*image.shape[1])
-                        max_y=int(max(bbox_y)*image.shape[0])
+                        hwratio=0.5
                         image=cv2.rectangle(image, (min_x, min_y), (max_x, max_y), (0, 0, 255))
-                        
-                        if abs(theta)<45:
-                            hwratio=1
-                        else:
-                            hwratio=1.4
-                        
-                        if (max_y-min_y)/(max_x-min_x)<hwratio:
+
+                        if (bbox_r_list[-2]-bbox_ratio)>hwratio:
                             print("fall state")
                             cv2.putText(image,
                                 "FALL state",
@@ -268,6 +225,4 @@ if __name__ == '__main__':
             out.write(image)
         if cv2.waitKey(1) == 27:
             break
-        #logger.debug('finished+')
-
     cv2.destroyAllWindows()
