@@ -120,8 +120,8 @@ if __name__ == '__main__':
                 
                 if fall_state:
                     fall_count+=1
-                    if fall_count<10:
-                        if (head_y_list[-(fall_count+1)]-head_y)>=20:
+                    if fall_count<15:
+                        if (head_y_list[-(fall_count+1)]-head_y)>=0:
                             image=cv2.rectangle(image, (min_x, min_y), (max_x, max_y), (0, 0, 255))
                             if bbox_ratio>1:
                                 print("stand")
@@ -142,12 +142,12 @@ if __name__ == '__main__':
                     
                     
                 else:
-                    if head_y - head_y_list[-2] >= 40:
+                    if head_y - head_y_list[-2] >= 20:
                         theta=0
-                        hwratio=1.5
+                        hwratio=0.5
                         image=cv2.rectangle(image, (min_x, min_y), (max_x, max_y), (0, 0, 255))
 
-                        if bbox_ratio<hwratio:
+                        if (bbox_r_list[-2]-bbox_ratio)>hwratio:
                             print("fall state")
                             cv2.putText(image,
                                 "FALL state",
